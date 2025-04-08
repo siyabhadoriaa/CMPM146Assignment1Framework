@@ -2,7 +2,6 @@ using UnityEngine;
 using System.Collections.Generic;
 using TMPro;
 
-//checking if git works 
 
 public class SteeringBehavior : MonoBehaviour
 {
