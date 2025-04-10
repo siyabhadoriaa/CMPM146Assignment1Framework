@@ -29,7 +29,78 @@ public class SteeringBehavior : MonoBehaviour
 
         // you can use kinematic.SetDesiredSpeed(...) and kinematic.SetDesiredRotationalVelocity(...)
         //    to "request" acceleration/decceleration to a target speed/rotational velocity
+
+         // If following a path (waypoints)
+        if (path != null && path.Count > 0)
+        {
+            target = path[0];
+            Vector3 direction = target - transform.position;
+            float distance = direction.magnitude;
+
+            if (label != null)
+                label.text = "Waypoint dist: " + distance.ToString("F2");
+
+            if (distance < 1f)
+            {
+                path.RemoveAt(0);
+                if (path.Count == 0)
+                {
+                    kinematic.SetDesiredSpeed(0f);
+                    kinematic.SetDesiredRotationalVelocity(0f);
+                }
+                return;
+            }
+
+            MoveToward(direction);
+        }
+        // If a single target is set
+        else if ((target - transform.position).magnitude > 1f)
+        {
+            Vector3 direction = target - transform.position;
+            float distance = direction.magnitude;
+
+            if (label != null)
+                label.text = "Distance: " + distance.ToString("F2");
+
+            MoveToward(direction);
+        }
+        else
+        {
+            // Stop if we're at the target
+            kinematic.SetDesiredSpeed(0f);
+            kinematic.SetDesiredRotationalVelocity(0f);
+        }
     }
+
+   void MoveToward(Vector3 direction)
+{
+    direction.y = 0;
+    float distance = direction.magnitude;
+
+    // Adjust this value to control how far from the target slowing starts
+    float slowingRadius = 10f;
+
+    // Compute desired speed: full speed outside slowing radius, scaled inside
+    float targetSpeed = 10f;
+    float speed = (distance < slowingRadius)
+        ? Mathf.Lerp(0, targetSpeed, distance / slowingRadius)
+        : targetSpeed;
+
+    kinematic.SetDesiredSpeed(speed);
+
+    // Compute rotation
+    float angle = Vector3.SignedAngle(transform.forward, direction, Vector3.up);
+    float rotationSpeed = 0f;
+
+    if (Mathf.Abs(angle) > 5f)
+        rotationSpeed = angle > 0 ? 30f : -30f;
+
+    kinematic.SetDesiredRotationalVelocity(rotationSpeed);
+
+    // Optional visual debugging
+    Debug.DrawLine(transform.position, transform.position + direction.normalized * 5, Color.red);
+}
+
 
     public void SetTarget(Vector3 target)
     {
