@@ -72,37 +72,32 @@ public class SteeringBehavior : MonoBehaviour
         }
     }
 
-   void MoveToward(Vector3 direction)
-{
-    direction.y = 0;
-    float distance = direction.magnitude;
+ void MoveToward(Vector3 direction)
+    {
+        direction.y = 0;
+        float distance = direction.magnitude;
 
-    // Adjust this value to control how far from the target slowing starts
-    float slowingRadius = 10f;
+        float slowingRadius = 10f;
+        float targetSpeed = 10f;
 
-    // Compute desired speed: full speed outside slowing radius, scaled inside
-    float targetSpeed = 10f;
-    float speed = (distance < slowingRadius)
-        ? Mathf.Lerp(0, targetSpeed, distance / slowingRadius)
-        : targetSpeed;
+        float speed = (distance < slowingRadius)
+            ? Mathf.Lerp(0, targetSpeed, distance / slowingRadius)
+            : targetSpeed;
 
-    kinematic.SetDesiredSpeed(speed);
+        kinematic.SetDesiredSpeed(speed);
 
-    // Compute rotation
-    float angle = Vector3.SignedAngle(transform.forward, direction, Vector3.up);
-    float rotationSpeed = 0f;
+        float angle = Vector3.SignedAngle(transform.forward, direction, Vector3.up);
+        float rotationSpeed = 0f;
 
-    if (Mathf.Abs(angle) > 5f)
-        rotationSpeed = angle > 0 ? 30f : -30f;
+        if (Mathf.Abs(angle) > 5f)
+            rotationSpeed = angle > 0 ? 30f : -30f;
 
-    kinematic.SetDesiredRotationalVelocity(rotationSpeed);
+        kinematic.SetDesiredRotationalVelocity(rotationSpeed);
 
-    // Optional visual debugging
-    Debug.DrawLine(transform.position, transform.position + direction.normalized * 5, Color.red);
-}
+        Debug.DrawLine(transform.position, transform.position + direction.normalized * 5, Color.red);
+    }
 
-
-    public void SetTarget(Vector3 target)
+public void SetTarget(Vector3 target)
     {
         this.target = target;
         EventBus.ShowTarget(target);
