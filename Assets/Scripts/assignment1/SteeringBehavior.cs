@@ -11,6 +11,9 @@ public class SteeringBehavior : MonoBehaviour
     // you can use this label to show debug information,
     // like the distance to the (next) target
     public TextMeshProUGUI label;
+
+    bool isReversing = false;
+    Vector3 reverseOrigin;
     
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -31,6 +34,11 @@ public class SteeringBehavior : MonoBehaviour
         //    to "request" acceleration/decceleration to a target speed/rotational velocity
 
          // If following a path (waypoints)
+         // if angle is too steep, use backing up technique
+         // drive far away, then figure the angle
+         // decide whether to overshoot or undershoot during pathfinding -- notice this in reflectio
+        
+
         if (path != null && path.Count > 0)
         {
             target = path[0];
@@ -72,32 +80,77 @@ public class SteeringBehavior : MonoBehaviour
         }
     }
 
- void MoveToward(Vector3 direction)
-    {
+    void MoveToward(Vector3 direction) {
         direction.y = 0;
         float distance = direction.magnitude;
 
+        float arrivalRadius = 1f;
         float slowingRadius = 10f;
         float targetSpeed = 10f;
 
-        float speed = (distance < slowingRadius)
-            ? Mathf.Lerp(0, targetSpeed, distance / slowingRadius)
-            : targetSpeed;
-
-        kinematic.SetDesiredSpeed(speed);
-
         float angle = Vector3.SignedAngle(transform.forward, direction, Vector3.up);
+        float absAngle = Mathf.Abs(angle);
+
+        // --- Tweak these thresholds ---
+        float closeThreshold = 15f;
+        float alignThreshold = 60f; // Angle at which we say "you're facing too far off"
+        float reverseExitDistance = 15f;
+        float alignmentCompleteThreshold = 18f;
+
+        float speed = 0f;
         float rotationSpeed = 0f;
 
-        if (Mathf.Abs(angle) > 5f)
-            rotationSpeed = angle > 0 ? 30f : -30f;
+        if (!isReversing && distance < closeThreshold && absAngle > alignThreshold) {
+            isReversing = true;
+            reverseOrigin = transform.position; // Record starting point
+        }
 
+        if (isReversing) {
+            float reverseDistance = Vector3.Distance(transform.position, reverseOrigin);
+
+            if (reverseDistance < reverseExitDistance) {
+                // Keep backing up and turning toward the target
+                Vector3 reverseDirection = -direction.normalized;
+                float reverseAngle = Vector3.SignedAngle(transform.forward, reverseDirection, Vector3.up);
+
+                speed = -3f;
+                rotationSpeed = reverseAngle > 0 ? 120f : -120f;
+
+                Debug.DrawLine(transform.position, transform.position + reverseDirection * 5f, Color.blue);
+                kinematic.SetDesiredSpeed(speed);
+                kinematic.SetDesiredRotationalVelocity(rotationSpeed);
+                return;
+            } else {
+                // Stop reversing, go back to normal movement
+                isReversing = false;
+            }
+        }
+        // Once aligned (angle is small enough), move normally
+        if (distance > arrivalRadius) {
+            speed = (distance < slowingRadius)
+                ? Mathf.Lerp(0, targetSpeed, distance / slowingRadius)
+                : targetSpeed;
+
+            if (absAngle > alignmentCompleteThreshold) {
+                rotationSpeed = angle > 0 ? 120f : -120f;
+            } else {
+                rotationSpeed = 0f;
+            }
+        } else {
+            speed = 0f;
+            rotationSpeed = 0f;
+        }
+
+        kinematic.SetDesiredSpeed(speed);
         kinematic.SetDesiredRotationalVelocity(rotationSpeed);
 
+        // Visual debug
         Debug.DrawLine(transform.position, transform.position + direction.normalized * 5, Color.red);
     }
 
-public void SetTarget(Vector3 target)
+
+
+    public void SetTarget(Vector3 target)
     {
         this.target = target;
         EventBus.ShowTarget(target);
