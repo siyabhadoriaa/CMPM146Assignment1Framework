@@ -41,26 +41,40 @@ public class SteeringBehavior : MonoBehaviour
 
         if (path != null && path.Count > 0)
         {
+            while (path.Count > 0)
+            {
+                float waypointDistance = (path[0] - transform.position).magnitude;
+                if (waypointDistance < 2f)
+                {
+                    Debug.Log("Reached waypoint, removing: " + path[0]);
+                    path.RemoveAt(0);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (path.Count == 0)
+            {
+                kinematic.SetDesiredSpeed(0f);
+                kinematic.SetDesiredRotationalVelocity(0f);
+                return;
+            }
+
+            // ✅ Only happens if there's still a point left
             target = path[0];
             Vector3 direction = target - transform.position;
             float distance = direction.magnitude;
 
+            Debug.Log("Next waypoint: " + target);
             if (label != null)
                 label.text = "Waypoint dist: " + distance.ToString("F2");
 
-            if (distance < 1f)
-            {
-                path.RemoveAt(0);
-                if (path.Count == 0)
-                {
-                    kinematic.SetDesiredSpeed(0f);
-                    kinematic.SetDesiredRotationalVelocity(0f);
-                }
-                return;
-            }
-
             MoveToward(direction);
+
         }
+
         // If a single target is set
         else if ((target - transform.position).magnitude > 1f)
         {
@@ -146,6 +160,8 @@ public class SteeringBehavior : MonoBehaviour
 
         // Visual debug
         Debug.DrawLine(transform.position, transform.position + direction.normalized * 5, Color.red);
+        Debug.Log("Moving toward: " + direction + " | Distance: " + distance);
+
     }
 
 
@@ -158,6 +174,7 @@ public class SteeringBehavior : MonoBehaviour
 
     public void SetPath(List<Vector3> path)
     {
+        Debug.Log("Path received with count: " + path.Count);
         this.path = path;
     }
 
