@@ -81,7 +81,7 @@ public class SteeringBehavior : MonoBehaviour
                 return;
             }
 
-            // ✅ Only happens if there's still a point left
+            //Only happens if there's still a point left
             target = path[0];
             Vector3 direction = target - transform.position;
             float distance = direction.magnitude;
