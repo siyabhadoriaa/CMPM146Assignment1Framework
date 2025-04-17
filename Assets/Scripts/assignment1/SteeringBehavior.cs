@@ -121,43 +121,39 @@ public class SteeringBehavior : MonoBehaviour
         float slowingRadius = 10f;
         float targetSpeed = 10f;
 
-        // --- Angle-aware slowdown based on upcoming corner ---
-        if (path != null && path.Count >= 2)
-        {
-            Vector3 toCurrent = (path[0] - transform.position).normalized;
-            Vector3 toNext = (path[1] - path[0]).normalized;
-
-            float turnAngle = Vector3.Angle(toCurrent, toNext); // Angle between path segments
-            float turnFactor = Mathf.InverseLerp(0f, 90f, turnAngle); // 0 = straight, 1 = sharp
-        }
-
-
         float angle = Vector3.SignedAngle(transform.forward, direction, Vector3.up);
         float absAngle = Mathf.Abs(angle);
 
-        // --- Tweak these thresholds ---
-        float closeThreshold = 15f;
-        float alignThreshold = 60f; // Angle at which we say "you're facing too far off"
-        float reverseExitDistance = 15f;
+        // Thresholds
+        float closeThreshold = 20f; // Lowered to reduce reverse frequency
+        float alignThreshold = 60f;
         float alignmentCompleteThreshold = 18f;
 
         float speed = 0f;
         float rotationSpeed = 0f;
 
+        // --- Dynamic reverseExitDistance based on target distance ---
+        float minReverseExit = 1f;
+        float maxReverseExit = 10f;
+        float maxDistanceForScaling = 20f;
+        float t = Mathf.Clamp01(distance / maxDistanceForScaling);
+        float reverseExitDistance = Mathf.Lerp(minReverseExit, maxReverseExit, t);
+
+        // Trigger reversing if close and misaligned
         if (!isReversing && distance < closeThreshold && absAngle > alignThreshold) {
             isReversing = true;
-            reverseOrigin = transform.position; // Record starting point
+            reverseOrigin = transform.position;
         }
 
+        // Handle reversing
         if (isReversing) {
             float reverseDistance = Vector3.Distance(transform.position, reverseOrigin);
 
             if (reverseDistance < reverseExitDistance) {
-                // Keep backing up and turning toward the target
                 Vector3 reverseDirection = -direction.normalized;
                 float reverseAngle = Vector3.SignedAngle(transform.forward, reverseDirection, Vector3.up);
 
-                speed = -3f;
+                speed = -8f; // Reduced reverse speed
                 rotationSpeed = reverseAngle > 0 ? 120f : -120f;
 
                 Debug.DrawLine(transform.position, transform.position + reverseDirection * 5f, Color.blue);
@@ -165,11 +161,10 @@ public class SteeringBehavior : MonoBehaviour
                 kinematic.SetDesiredRotationalVelocity(rotationSpeed);
                 return;
             } else {
-                // Stop reversing, go back to normal movement
                 isReversing = false;
             }
         }
-        // Once aligned (angle is small enough), move normally
+
         if (distance > arrivalRadius) {
             // Only slow down if we’re on the last waypoint of the path (or not on a path)
             bool isFinalPathPoint = (path == null || path.Count == 1);
@@ -188,10 +183,9 @@ public class SteeringBehavior : MonoBehaviour
         kinematic.SetDesiredSpeed(speed);
         kinematic.SetDesiredRotationalVelocity(rotationSpeed);
 
-        // Visual debug
-        Debug.DrawLine(transform.position, transform.position + direction.normalized * 5, Color.red);
+        // Debug visuals
+        Debug.DrawLine(transform.position, transform.position + direction.normalized * 5f, Color.red);
         Debug.Log("Moving toward: " + direction + " | Distance: " + distance);
-
     }
 
 
