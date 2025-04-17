@@ -174,6 +174,11 @@ public class SteeringBehavior : MonoBehaviour
 
     public void SetPath(List<Vector3> path)
     {
+        if (path == null)
+        {
+            Debug.LogWarning("SetPath was called with a null path!");
+            return;
+        }
         Debug.Log("Path received with count: " + path.Count);
         this.path = path;
     }
