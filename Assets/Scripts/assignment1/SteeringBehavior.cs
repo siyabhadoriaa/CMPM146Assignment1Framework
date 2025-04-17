@@ -44,11 +44,30 @@ public class SteeringBehavior : MonoBehaviour
             while (path.Count > 0)
             {
                 float waypointDistance = (path[0] - transform.position).magnitude;
-                if (waypointDistance < 2f)
+
+                // Lookahead for tight turns
+                bool shouldAdvance = waypointDistance < 2f;
+
+                if (path.Count >= 2 && waypointDistance < 5f) // consider "cutting" early if needed
                 {
-                    Debug.Log("Reached waypoint, removing: " + path[0]);
+                    Vector3 toCurrent = (path[0] - transform.position).normalized;
+                    Vector3 toNext = (path[1] - path[0]).normalized;
+
+                    float turnAngle = Vector3.Angle(toCurrent, toNext);
+
+                    if (turnAngle < 25f)
+                    {
+                        // Small angle — go ahead and skip early
+                        shouldAdvance = true;
+                    }
+                }
+
+                if (shouldAdvance)
+                {
+                    Debug.Log("Reached (or skipped) waypoint: " + path[0]);
                     path.RemoveAt(0);
                 }
+
                 else
                 {
                     break;
@@ -102,6 +121,17 @@ public class SteeringBehavior : MonoBehaviour
         float slowingRadius = 10f;
         float targetSpeed = 10f;
 
+        // --- Angle-aware slowdown based on upcoming corner ---
+        if (path != null && path.Count >= 2)
+        {
+            Vector3 toCurrent = (path[0] - transform.position).normalized;
+            Vector3 toNext = (path[1] - path[0]).normalized;
+
+            float turnAngle = Vector3.Angle(toCurrent, toNext); // Angle between path segments
+            float turnFactor = Mathf.InverseLerp(0f, 90f, turnAngle); // 0 = straight, 1 = sharp
+        }
+
+
         float angle = Vector3.SignedAngle(transform.forward, direction, Vector3.up);
         float absAngle = Mathf.Abs(angle);
 
@@ -141,18 +171,18 @@ public class SteeringBehavior : MonoBehaviour
         }
         // Once aligned (angle is small enough), move normally
         if (distance > arrivalRadius) {
-            speed = (distance < slowingRadius)
-                ? Mathf.Lerp(0, targetSpeed, distance / slowingRadius)
-                : targetSpeed;
+            // Only slow down if we’re on the last waypoint of the path (or not on a path)
+            bool isFinalPathPoint = (path == null || path.Count == 1);
+
+            speed = (!isFinalPathPoint || distance >= slowingRadius)
+                ? targetSpeed
+                : Mathf.Lerp(0, targetSpeed, distance / slowingRadius);
 
             if (absAngle > alignmentCompleteThreshold) {
                 rotationSpeed = angle > 0 ? 120f : -120f;
             } else {
                 rotationSpeed = 0f;
             }
-        } else {
-            speed = 0f;
-            rotationSpeed = 0f;
         }
 
         kinematic.SetDesiredSpeed(speed);
