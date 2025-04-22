@@ -5,49 +5,43 @@ public class PathFinder : MonoBehaviour
 {
     public static (List<Vector3>, int) AStar(GraphNode start, GraphNode destination, Vector3 target)
     {
-        var openSet = new PriorityQueue<GraphNode>();
-        var cameFrom = new Dictionary<GraphNode, GraphNode>();
-        var gScore = new Dictionary<GraphNode, float>();
-        var fScore = new Dictionary<GraphNode, float>();
-        var visited = new HashSet<GraphNode>();
+        var openSet = new PriorityQueue<AStarEntry>();
+        var entriesById = new Dictionary<int, AStarEntry>();
 
-        gScore[start] = 0f;
-        fScore[start] = Heuristic(start, target);
+        var startEntry = new AStarEntry(start, null, null, 0f, Heuristic(start, target));
+        entriesById[start.GetID()] = startEntry;
+        openSet.Enqueue(startEntry, startEntry.FScore);
 
-        openSet.Enqueue(start, fScore[start]);
         int expanded = 0;
 
         while (openSet.Count > 0)
         {
-            GraphNode current = openSet.Dequeue();
+            AStarEntry current = openSet.Dequeue();
             expanded++;
 
-            if (current == destination)
+            if (current.Node == destination)
             {
-                return (ReconstructPath(cameFrom, current, target), expanded);
+                return (ReconstructPath(current, target), expanded);
             }
 
-            visited.Add(current);
-
-            foreach (var neighbor in current.GetNeighbors())
+            foreach (var neighbor in current.Node.GetNeighbors())
             {
                 GraphNode neighborNode = neighbor.GetNode();
-                if (visited.Contains(neighborNode))
-                    continue;
+                int neighborID = neighborNode.GetID();
 
-                float tentative_gScore = gScore[current] + Vector3.Distance(current.GetCenter(), neighborNode.GetCenter());
+                float tentativeG = current.GScore + Vector3.Distance(current.Node.GetCenter(), neighborNode.GetCenter());
 
-                if (!gScore.ContainsKey(neighborNode) || tentative_gScore < gScore[neighborNode])
+                if (!entriesById.TryGetValue(neighborID, out AStarEntry neighborEntry) || tentativeG < neighborEntry.GScore)
                 {
-                    cameFrom[neighborNode] = current;
-                    gScore[neighborNode] = tentative_gScore;
-                    fScore[neighborNode] = tentative_gScore + Heuristic(neighborNode, target);
-                    openSet.Enqueue(neighborNode, fScore[neighborNode]);
+                    float fScore = tentativeG + Heuristic(neighborNode, target);
+                    var newEntry = new AStarEntry(neighborNode, current, neighbor, tentativeG, fScore);
+                    entriesById[neighborID] = newEntry;
+                    openSet.Enqueue(newEntry, fScore);
                 }
             }
         }
 
-        return (new List<Vector3>() { target }, expanded);
+        return (new List<Vector3>() { target }, expanded); // fallback
     }
 
     static float Heuristic(GraphNode node, Vector3 target)
@@ -55,22 +49,37 @@ public class PathFinder : MonoBehaviour
         return Vector3.Distance(node.GetCenter(), target);
     }
 
-
-    static List<Vector3> ReconstructPath(Dictionary<GraphNode, GraphNode> cameFrom, GraphNode current, Vector3 target)
+    static List<Vector3> ReconstructPath(AStarEntry endEntry, Vector3 target)
     {
-        var path = new List<Vector3> { target };
+        List<Vector3> path = new List<Vector3> { target };
+        AStarEntry current = endEntry;
 
-        while (cameFrom.ContainsKey(current))
+        while (current.CameFrom != null)
         {
-            path.Insert(0, current.GetCenter());  // Use GetCenter() to access the 'center' of the node
-            current = cameFrom[current];
+            path.Insert(0, current.FromNeighbor.GetWall().midpoint);
+            current = current.CameFrom;
         }
 
-        path.Insert(0, current.GetCenter()); // include the start node
         return path;
     }
 
+    private class AStarEntry
+    {
+        public GraphNode Node;
+        public AStarEntry CameFrom;
+        public GraphNeighbor FromNeighbor;
+        public float GScore;
+        public float FScore;
 
+        public AStarEntry(GraphNode node, AStarEntry cameFrom, GraphNeighbor fromNeighbor, float gScore, float fScore)
+        {
+            Node = node;
+            CameFrom = cameFrom;
+            FromNeighbor = fromNeighbor;
+            GScore = gScore;
+            FScore = fScore;
+        }
+    }
 
     public Graph graph;
 
@@ -80,10 +89,7 @@ public class PathFinder : MonoBehaviour
         EventBus.OnSetGraph += SetGraph;
     }
 
-    void Update()
-    {
-        // no logic needed here
-    }
+    void Update() { }
 
     public void SetGraph(Graph g)
     {
@@ -100,13 +106,10 @@ public class PathFinder : MonoBehaviour
         foreach (var n in graph.all_nodes)
         {
             if (Util.PointInPolygon(transform.position, n.GetPolygon()))
-            {
                 start = n;
-            }
+
             if (Util.PointInPolygon(target, n.GetPolygon()))
-            {
                 destination = n;
-            }
         }
 
         if (destination != null)
@@ -118,7 +121,6 @@ public class PathFinder : MonoBehaviour
         }
     }
 
-    // Internal Priority Queue class
     private class PriorityQueue<T>
     {
         private List<(T item, float priority)> elements = new List<(T, float)>();
@@ -149,3 +151,4 @@ public class PathFinder : MonoBehaviour
         }
     }
 }
+
