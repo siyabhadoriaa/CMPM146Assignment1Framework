@@ -13,6 +13,9 @@ public class SteeringBehavior : MonoBehaviour
     public TextMeshProUGUI label;
 
     bool isReversing = false;
+    bool isEscaping = false;
+    Vector3 escapeStart;
+    float escapeDistance = 3f;
     Vector3 reverseOrigin;
     
     // Start is called once before the first execution of Update after the MonoBehaviour is created
@@ -117,7 +120,7 @@ public class SteeringBehavior : MonoBehaviour
         direction.y = 0;
         float distance = direction.magnitude;
 
-        float arrivalRadius = 1f;
+        float arrivalRadius = 2f;
         float slowingRadius = 10f;
         float targetSpeed = 10f;
 
@@ -139,10 +142,42 @@ public class SteeringBehavior : MonoBehaviour
         float t = Mathf.Clamp01(distance / maxDistanceForScaling);
         float reverseExitDistance = Mathf.Lerp(minReverseExit, maxReverseExit, t);
 
+
+        if (isEscaping)
+        {
+            float moved = Vector3.Distance(transform.position, escapeStart);
+            if (moved < escapeDistance)
+            {
+                kinematic.SetDesiredSpeed(4f);
+                kinematic.SetDesiredRotationalVelocity(angle > 0 ? 60f : -60f);
+                Debug.Log("Escaping forward to create space");
+                return;
+            }
+            else
+            {
+                isEscaping = false;
+                Debug.Log("Escape complete, resuming normal steering");
+            }
+        }
+
         // Trigger reversing if close and misaligned
         if (!isReversing && distance < closeThreshold && absAngle > alignThreshold) {
-            isReversing = true;
-            reverseOrigin = transform.position;
+            if (!Physics.Raycast(transform.position, -transform.forward, 2f))
+            {
+                isReversing = true;
+                reverseOrigin = transform.position;
+            }
+            else
+            {
+                Debug.Log("Blocked from reversing, switching to escape forward mode");
+                isEscaping = true;
+                escapeStart = transform.position;
+
+                // Begin slight forward motion
+                kinematic.SetDesiredSpeed(4f);
+                kinematic.SetDesiredRotationalVelocity(angle > 0 ? 60f : -60f);
+                return;
+            }
         }
 
         // Handle reversing
@@ -150,10 +185,25 @@ public class SteeringBehavior : MonoBehaviour
             float reverseDistance = Vector3.Distance(transform.position, reverseOrigin);
 
             if (reverseDistance < reverseExitDistance) {
+                // Check if we are blocked while reversing
+                if (Physics.Raycast(transform.position, -transform.forward, 1f))
+                {
+                    Debug.Log("Reversing blocked by wall, switching to forward to create space");
+                    isReversing = false;
+
+                    // Move forward slightly
+                    speed = 4f;
+                    rotationSpeed = angle > 0 ? 60f : -60f;
+
+                    kinematic.SetDesiredSpeed(speed);
+                    kinematic.SetDesiredRotationalVelocity(rotationSpeed);
+                    return;
+                }
+
                 Vector3 reverseDirection = -direction.normalized;
                 float reverseAngle = Vector3.SignedAngle(transform.forward, reverseDirection, Vector3.up);
 
-                speed = -8f; // Reduced reverse speed
+                speed = -8f;
                 rotationSpeed = reverseAngle > 0 ? 120f : -120f;
 
                 Debug.DrawLine(transform.position, transform.position + reverseDirection * 5f, Color.blue);

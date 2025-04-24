@@ -56,7 +56,11 @@ public class PathFinder : MonoBehaviour
 
         while (current.CameFrom != null)
         {
-            path.Insert(0, current.FromNeighbor.GetWall().midpoint);
+            Vector3 midpoint = current.FromNeighbor.GetWall().midpoint;
+             // Offset the point slightly away from the wall
+            Vector3 normal = current.FromNeighbor.GetWall().normal; // You may need to calculate this
+            Vector3 offsetMidpoint = midpoint + normal * 0.5f;
+            path.Insert(0, offsetMidpoint);
             current = current.CameFrom;
         }
 
@@ -151,4 +155,3 @@ public class PathFinder : MonoBehaviour
         }
     }
 }
-
