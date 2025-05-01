@@ -163,15 +163,15 @@ public class NavMesh : MonoBehaviour
             Vector3 current = vertices[i];
             Vector3 next = vertices[(i + 1) % vertices.Count];
 
-            Vector3 edge1 = current - prev;
-            Vector3 edge2 = next - current;
+            Wall w1 = new Wall(prev, current);
+            Wall w2 = new Wall(current, next);
 
-            // If cross product's y component is negative, this is a reflex vertex
-            if (Vector3.Cross(edge1, edge2).y < 0)
-                return i;
+            if (Vector3.Dot(w1.normal, w2.direction) < 0)
+                return i; // reflex
         }
         return -1;
     }
+
 
     private int FindBestDiagonal(List<Vector3> vertices, int fromIndex)
     {
