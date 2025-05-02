@@ -1,57 +1,36 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 public class NavMesh : MonoBehaviour
 {
-    // implement NavMesh generation here:
-    //    the outline are Walls in counterclockwise order
-    //    iterate over them, and if you find a reflex angle
-    //    you have to split the polygon into two
-    //    then perform the same operation on both parts
-    //    until no more reflex angles are present
-    //
-    //    when you have a number of polygons, you will have
-    //    to convert them into a graph: each polygon is a node
-    //    you can find neighbors by finding shared edges between
-    //    different polygons (or you can keep track of this while 
-    //    you are splitting)
     public Graph MakeNavMesh(List<Wall> outline)
     {
         Graph g = new Graph();
         g.all_nodes = new List<GraphNode>();
         g.outline = outline;
 
-        // Convert walls to vertices for processing
         List<Vector3> vertices = outline.Select(w => w.start).ToList();
         List<List<Vector3>> convexPolygons = new List<List<Vector3>>();
-
-        // Process the polygon until it can't be split anymore
         SplitPolygon(vertices, convexPolygons);
 
-        // Create graph nodes from the convex polygons
         for (int i = 0; i < convexPolygons.Count; i++)
         {
             List<Wall> polygonWalls = new List<Wall>();
             List<Vector3> polyVertices = convexPolygons[i];
 
-            // Create walls for the polygon in counterclockwise order
             for (int j = 0; j < polyVertices.Count; j++)
             {
-                Vector3 start = polyVertices[j];
-                Vector3 end = polyVertices[(j + 1) % polyVertices.Count];
+                Vector3 start = RoundToGrid(polyVertices[j]);
+                Vector3 end = RoundToGrid(polyVertices[(j + 1) % polyVertices.Count]);
                 polygonWalls.Add(new Wall(start, end));
             }
 
-            // Create node and add to graph
             GraphNode node = new GraphNode(i, polygonWalls);
             g.all_nodes.Add(node);
         }
 
-        // Find neighbors between nodes
         FindNeighbors(g.all_nodes);
-
         return g;
     }
 
@@ -62,18 +41,17 @@ public class NavMesh : MonoBehaviour
             List<Wall> a_walls = a.GetPolygon();
             foreach (var b in nodes)
             {
-                if (a.GetID() != b.GetID())
+                if (a.GetID() == b.GetID()) continue;
+                List<Wall> b_walls = b.GetPolygon();
+
+                for (int i = 0; i < a_walls.Count; i++)
                 {
-                    List<Wall> b_walls = b.GetPolygon();
-                    for (int i = 0; i < a_walls.Count; i++)
+                    for (int j = 0; j < b_walls.Count; j++)
                     {
-                        for (int j = 0; j < b_walls.Count; j++)
+                        if (a_walls[i].Same(b_walls[j]))
                         {
-                            if (a_walls[i].Same(b_walls[j]))
-                            {
-                                a.AddNeighbor(b, i);
-                                b.AddNeighbor(a, j);
-                            }
+                            a.AddNeighbor(b, i);
+                            b.AddNeighbor(a, j);
                         }
                     }
                 }
@@ -83,37 +61,30 @@ public class NavMesh : MonoBehaviour
 
     private void SplitPolygon(List<Vector3> vertices, List<List<Vector3>> result)
     {
-        // If polygon is already convex or a triangle, add it to results
         if (vertices.Count <= 3 || IsConvex(vertices))
         {
             result.Add(new List<Vector3>(vertices));
             return;
         }
 
-        // Find a reflex vertex and a suitable diagonal
         int reflexIndex = FindReflexVertex(vertices);
         if (reflexIndex == -1)
         {
-            // No reflex vertices found (shouldn't happen if not convex)
             result.Add(new List<Vector3>(vertices));
             return;
         }
 
-        // Find best vertex to connect to
         int bestVertex = FindBestDiagonal(vertices, reflexIndex);
         if (bestVertex == -1)
         {
-            // No valid diagonal found, try next reflex vertex
             vertices.RemoveAt(reflexIndex);
             SplitPolygon(vertices, result);
             return;
         }
 
-        // Split the polygon into two parts
         List<Vector3> poly1 = new List<Vector3>();
         List<Vector3> poly2 = new List<Vector3>();
 
-        // Build the two new polygons
         int current = reflexIndex;
         do
         {
@@ -130,48 +101,55 @@ public class NavMesh : MonoBehaviour
         } while (current != reflexIndex);
         poly2.Add(vertices[reflexIndex]);
 
-        // Recursively process the two new polygons
         SplitPolygon(poly1, result);
         SplitPolygon(poly2, result);
     }
 
     private bool IsConvex(List<Vector3> vertices)
     {
-        if (vertices.Count < 3) return false;
+        int n = vertices.Count;
+        if (n < 3) return false;
 
-        for (int i = 0; i < vertices.Count; i++)
+        bool gotNegative = false;
+        bool gotPositive = false;
+
+        for (int i = 0; i < n; i++)
         {
-            Vector3 current = vertices[i];
-            Vector3 next = vertices[(i + 1) % vertices.Count];
-            Vector3 next2 = vertices[(i + 2) % vertices.Count];
+            Vector2 a = new Vector2(vertices[i].x, vertices[i].z);
+            Vector2 b = new Vector2(vertices[(i + 1) % n].x, vertices[(i + 1) % n].z);
+            Vector2 c = new Vector2(vertices[(i + 2) % n].x, vertices[(i + 2) % n].z);
 
-            Vector3 edge1 = next - current;
-            Vector3 edge2 = next2 - next;
+            Vector2 ab = b - a;
+            Vector2 bc = c - b;
+            float cross = ab.x * bc.y - ab.y * bc.x;
 
-            // Check if the cross product's y component is negative (for CCW order)
-            if (Vector3.Cross(edge1, edge2).y < 0)
-                return false;
+            if (cross < 0) gotNegative = true;
+            if (cross > 0) gotPositive = true;
+
+            if (gotNegative && gotPositive) return false;
         }
+
         return true;
     }
 
     private int FindReflexVertex(List<Vector3> vertices)
     {
-        for (int i = 0; i < vertices.Count; i++)
+        int n = vertices.Count;
+        for (int i = 0; i < n; i++)
         {
-            Vector3 prev = vertices[(i - 1 + vertices.Count) % vertices.Count];
-            Vector3 current = vertices[i];
-            Vector3 next = vertices[(i + 1) % vertices.Count];
+            Vector2 prev = new Vector2(vertices[(i - 1 + n) % n].x, vertices[(i - 1 + n) % n].z);
+            Vector2 curr = new Vector2(vertices[i].x, vertices[i].z);
+            Vector2 next = new Vector2(vertices[(i + 1) % n].x, vertices[(i + 1) % n].z);
 
-            Wall w1 = new Wall(prev, current);
-            Wall w2 = new Wall(current, next);
+            Vector2 dir1 = curr - prev;
+            Vector2 dir2 = next - curr;
 
-            if (Vector3.Dot(w1.normal, w2.direction) < 0)
-                return i; // reflex
+            float cross = dir1.x * dir2.y - dir1.y * dir2.x;
+            if (cross < 0) return i;
         }
+
         return -1;
     }
-
 
     private int FindBestDiagonal(List<Vector3> vertices, int fromIndex)
     {
@@ -179,17 +157,13 @@ public class NavMesh : MonoBehaviour
         float bestScore = float.MinValue;
         int bestVertex = -1;
 
-        // Try to find the best vertex to connect to
         for (int i = 0; i < vertices.Count; i++)
         {
-            // Skip adjacent vertices and self
-            if (i == fromIndex || i == (fromIndex - 1 + vertices.Count) % vertices.Count ||
-                i == (fromIndex + 1) % vertices.Count)
+            if (i == fromIndex || i == (fromIndex - 1 + vertices.Count) % vertices.Count || i == (fromIndex + 1) % vertices.Count)
                 continue;
 
             if (IsDiagonalValid(vertices, fromIndex, i))
             {
-                // Score the diagonal based on angles it creates
                 float score = ScoreDiagonal(vertices, fromIndex, i);
                 if (score > bestScore)
                 {
@@ -204,21 +178,19 @@ public class NavMesh : MonoBehaviour
 
     private bool IsDiagonalValid(List<Vector3> vertices, int from, int to)
     {
-        Vector3 diagonal = vertices[to] - vertices[from];
+        Vector3 a = vertices[from];
+        Vector3 b = vertices[to];
 
-        // Check if diagonal intersects with any edge
         for (int i = 0; i < vertices.Count; i++)
         {
-            int next = (i + 1) % vertices.Count;
-
-            // Skip edges that share vertices with the diagonal
-            if (i == from || i == to || next == from || next == to)
+            int j = (i + 1) % vertices.Count;
+            if (i == from || i == to || j == from || j == to)
                 continue;
 
-            Vector3 edge = vertices[next] - vertices[i];
-            
-            // Check for intersection
-            if (LinesIntersect(vertices[from], vertices[to], vertices[i], vertices[next]))
+            Vector3 c = vertices[i];
+            Vector3 d = vertices[j];
+
+            if (new Wall(a, b).Crosses(c, d))
                 return false;
         }
 
@@ -227,31 +199,29 @@ public class NavMesh : MonoBehaviour
 
     private float ScoreDiagonal(List<Vector3> vertices, int from, int to)
     {
-        // Score based on the angles created by the diagonal
-        // Prefer diagonals that create angles closer to 90 degrees
-        Vector3 diagonal = vertices[to] - vertices[from];
-        float length = diagonal.magnitude;
-        
-        // Shorter diagonals are preferred
-        return -length;
+        Vector2 a = new Vector2(vertices[from].x, vertices[from].z);
+        Vector2 b = new Vector2(vertices[to].x, vertices[to].z);
+        float length = Vector2.Distance(a, b);
+
+        Vector2 prev = new Vector2(vertices[(from - 1 + vertices.Count) % vertices.Count].x,
+                                   vertices[(from - 1 + vertices.Count) % vertices.Count].z);
+        Vector2 dir1 = (a - prev).normalized;
+        Vector2 dir2 = (b - a).normalized;
+        float angle = Vector2.Angle(dir1, dir2);
+
+        float angleScore = 1f - Mathf.Abs(angle - 90f) / 90f;
+        float balance = 1f - Mathf.Abs((to - from + vertices.Count) % vertices.Count - vertices.Count / 2f) / (vertices.Count / 2f);
+
+        return angleScore * 0.5f + balance * 0.3f - length * 0.2f;
     }
 
-    private bool LinesIntersect(Vector3 p1, Vector3 p2, Vector3 p3, Vector3 p4)
+    private Vector3 RoundToGrid(Vector3 v, float precision = 0.001f)
     {
-        // Convert to 2D for intersection test (ignore Y component)
-        Vector2 a = new Vector2(p1.x, p1.z);
-        Vector2 b = new Vector2(p2.x, p2.z);
-        Vector2 c = new Vector2(p3.x, p3.z);
-        Vector2 d = new Vector2(p4.x, p4.z);
-
-        float denominator = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
-        if (Mathf.Approximately(denominator, 0))
-            return false;
-
-        float t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / denominator;
-        float u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / denominator;
-
-        return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+        return new Vector3(
+            Mathf.Round(v.x / precision) * precision,
+            Mathf.Round(v.y / precision) * precision,
+            Mathf.Round(v.z / precision) * precision
+        );
     }
 
     void Start()
@@ -259,17 +229,61 @@ public class NavMesh : MonoBehaviour
         EventBus.OnSetMap += SetMap;
     }
 
-    void Update()
-    {
-    }
-
     public void SetMap(List<Wall> outline)
     {
         Graph navmesh = MakeNavMesh(outline);
-        if (navmesh != null)
+
+        if (navmesh == null || navmesh.all_nodes.Count == 0)
         {
-            Debug.Log("got navmesh: " + navmesh.all_nodes.Count);
-            EventBus.SetGraph(navmesh);
+            Debug.LogError("NavMesh is empty or null.");
+            return;
         }
+
+        Debug.Log("NavMesh built with " + navmesh.all_nodes.Count + " nodes.");
+        EventBus.SetGraph(navmesh);
+
+        GameObject car = GameObject.FindWithTag("Player");
+        if (car == null)
+        {
+            Debug.LogError("Car not found. Tag it as 'Player'.");
+            return;
+        }
+
+        Vector3 carPos = car.transform.position;
+
+        GraphNode start = null;
+        foreach (var node in navmesh.all_nodes)
+        {
+            if (Util.PointInPolygon(carPos, node.GetPolygon()))
+            {
+                start = node;
+                break;
+            }
+        }
+
+        if (start == null)
+        {
+            Debug.LogWarning("Start node not found.");
+            return;
+        }
+
+        // Pick farthest node from car as destination (excluding the start)
+        GraphNode destination = navmesh.all_nodes
+            .Where(n => n != start)
+            .OrderByDescending(n => Vector3.Distance(n.GetCenter(), carPos))
+            .FirstOrDefault();
+
+        if (destination == null)
+        {
+            Debug.LogWarning("Destination node not found.");
+            return;
+        }
+
+        Vector3 target = destination.GetCenter();
+        Debug.Log($"Start node ID: {start.GetID()} → Destination node ID: {destination.GetID()}");
+
+        EventBus.ShowTarget(target);
+        EventBus.SetTarget(target);
+
     }
 }

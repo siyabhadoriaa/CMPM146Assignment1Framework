@@ -25,6 +25,8 @@ public class SteeringBehavior : MonoBehaviour
         target = transform.position;
         path = null;
         EventBus.OnSetMap += SetMap;
+        EventBus.OnPath += SetPath;           // ✅ Make sure this is here
+        EventBus.OnTarget += SetTarget; 
     }
 
     // Update is called once per frame
@@ -248,14 +250,24 @@ public class SteeringBehavior : MonoBehaviour
 
     public void SetPath(List<Vector3> path)
     {
-        if (path == null)
+        if (path == null || path.Count == 0)
         {
-            Debug.LogWarning("SetPath was called with a null path!");
+            Debug.LogWarning("Path is null or empty!");
             return;
         }
-        Debug.Log("Path received with count: " + path.Count);
+
+        Debug.Log("Path received with " + path.Count + " points.");
         this.path = path;
+
+        // Force movement to begin
+        if (kinematic != null)
+        {
+            kinematic.SetDesiredSpeed(5f); // <-- force forward motion
+            kinematic.SetDesiredRotationalVelocity(0f);
+            Debug.Log("Forced desired speed: 5");
+        }
     }
+
 
     public void SetMap(List<Wall> outline)
     {
